@@ -1,0 +1,619 @@
+Metadata-Version: 2.4
+Name: atlas-asset-client
+Version: 0.3.7
+Summary: Async HTTP client for Atlas Command.
+Author: ATLAS Team
+License-Expression: MIT
+Project-URL: Homepage, https://github.com/atlas/command
+Project-URL: Repository, https://github.com/atlas/command
+Project-URL: Documentation, https://github.com/atlas/command/wiki
+Keywords: atlas,command,http,asset
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: Topic :: System :: Monitoring
+Classifier: Topic :: Software Development :: Libraries
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Requires-Python: <3.14,>=3.9
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: httpx>=0.27
+Provides-Extra: dev
+Requires-Dist: pytest>=8.0.0; extra == "dev"
+Requires-Dist: pytest-asyncio>=0.21.0; extra == "dev"
+Requires-Dist: pytest-cov>=4.1.0; extra == "dev"
+Requires-Dist: mypy>=1.10.0; extra == "dev"
+Dynamic: license-file
+
+# Atlas Command HTTP Client (Python)
+
+`atlas-asset-client` is a lightweight async wrapper around the Atlas Command REST API. It provides strongly-typed convenience methods for working with
+entities, tasks, objects, and query endpoints via HTTP.
+
+## Installation
+
+```bash
+pip install atlas-asset-client
+```
+
+During local development inside this repository:
+
+```bash
+pip install -e Atlas_Client_SDKs/connection_packages/atlas_asset_http_client_python
+```
+
+## Import Options
+
+You can import the client using either module name:
+
+```python
+# Option 1: Package-name-matching import (recommended)
+from atlas_asset_client import AtlasCommandHttpClient
+
+# Option 2: Full module name (also works, maintained for backward compatibility)
+from atlas_asset_http_client_python import AtlasCommandHttpClient
+```
+
+Both import paths work identically and provide the same functionality.
+
+## Quickstart
+
+### Using Typed Components (Recommended)
+
+The client now supports typed component parameters that provide IDE autocomplete, type checking, and validation before transmission:
+
+```python
+import asyncio
+from atlas_asset_client import (
+    AtlasCommandHttpClient,
+    EntityComponents,
+    TelemetryComponent,
+    HealthComponent,
+    CommunicationsComponent,
+    TaskCatalogComponent,
+)
+
+async def main() -> None:
+    async with AtlasCommandHttpClient("http://localhost:8000") as client:
+        # Create entity with typed components
+        components = EntityComponents(
+            telemetry=TelemetryComponent(
+                latitude=40.7128,
+                longitude=-74.0060,
+                altitude_m=120,
+                speed_m_s=8.2,
+                heading_deg=165,
+            ),
+            health=HealthComponent(battery_percent=85),
+            communications=CommunicationsComponent(link_state="connected"),
+            task_catalog=TaskCatalogComponent(
+                supported_tasks=["move_to_location", "survey_grid"]
+            ),
+        )
+
+        entity = await client.create_entity(
+            entity_id="drone-01",
+            entity_type="asset",
+            alias="Demo Drone",
+            subtype="drone",
+            components=components,
+        )
+        print("Created entity:", entity["entity_id"])
+
+asyncio.run(main())
+```
+
+### Using Raw Dictionaries (Legacy)
+
+Raw dictionary components are still supported for backwards compatibility, but emit a deprecation warning:
+
+```python
+import asyncio
+from atlas_asset_http_client_python import AtlasCommandHttpClient
+
+async def main() -> None:
+    async with AtlasCommandHttpClient("http://localhost:8000") as client:
+        entity = await client.create_entity(
+            entity_id="asset-1",
+            entity_type="asset",
+            alias="Demo Asset",
+            subtype="drone",
+            components={"telemetry": {"latitude": 40.7, "longitude": -74.0}},  # Deprecated
+        )
+        print("Created entity:", entity["entity_id"])
+
+asyncio.run(main())
+```
+
+## Typed Component Reference
+
+### Entity Components
+
+The `EntityComponents` class accepts the following typed component fields:
+
+| Component | Type | Description |
+|-----------|------|-------------|
+| `telemetry` | `TelemetryComponent` | Position and motion data |
+| `geometry` | `GeometryComponent` | GeoJSON geometry for geoentities |
+| `task_catalog` | `TaskCatalogComponent` | Supported task identifiers |
+| `media_refs` | `List[MediaRefItem]` | References to media objects |
+| `mil_view` | `MilViewComponent` | Military tactical classification |
+| `health` | `HealthComponent` | Health and vital statistics |
+| `sensor_refs` | `List[SensorRefItem]` | Sensor configurations |
+| `communications` | `CommunicationsComponent` | Network link status |
+| `task_queue` | `TaskQueueComponent` | Current and queued work items |
+| `custom_*` | `Any` | Custom components (must be prefixed with `custom_`) |
+
+#### TelemetryComponent
+
+```python
+TelemetryComponent(
+    latitude=40.7128,      # degrees (WGS84)
+    longitude=-74.0060,    # degrees (WGS84)
+    altitude_m=120,        # meters above sea level
+    speed_m_s=8.2,         # horizontal speed in m/s
+    heading_deg=165,       # heading (0=N, 90=E)
+)
+```
+
+#### GeometryComponent
+
+```python
+# Point
+GeometryComponent(type="Point", coordinates=[-74.0060, 40.7128])
+
+# LineString
+GeometryComponent(type="LineString", coordinates=[[-74.0060, 40.7128], [-74.0070, 40.7138]])
+
+# Polygon
+GeometryComponent(type="Polygon", coordinates=[[[-74.0060, 40.7128], [-74.0070, 40.7128], [-74.0060, 40.7128]]])
+```
+
+#### HealthComponent
+
+```python
+HealthComponent(battery_percent=85)  # 0-100
+```
+
+#### CommunicationsComponent
+
+```python
+CommunicationsComponent(link_state="connected")  # connected/disconnected/degraded/unknown
+```
+
+#### MilViewComponent
+
+```python
+MilViewComponent(
+    classification="friendly",  # friendly/hostile/neutral/unknown/civilian
+    last_seen="2025-11-23T10:05:00Z",
+)
+```
+
+### Task Components
+
+The `TaskComponents` class accepts:
+
+| Component | Type | Description |
+|-----------|------|-------------|
+| `parameters` | `TaskParametersComponent` | Command parameters for task execution |
+| `progress` | `TaskProgressComponent` | Runtime telemetry about execution |
+
+```python
+from atlas_asset_http_client_python import TaskComponents, TaskParametersComponent, TaskProgressComponent
+
+components = TaskComponents(
+    parameters=TaskParametersComponent(
+        latitude=40.123,
+        longitude=-74.456,
+        altitude_m=120,
+    ),
+    progress=TaskProgressComponent(
+        percent=65,
+        updated_at="2025-11-25T08:45:00Z",
+        status_detail="En route to destination",
+    ),
+)
+
+task = await client.create_task(
+    task_id="task-1",
+    entity_id="asset-1",
+    components=components,
+)
+```
+
+### Custom Components
+
+Custom components must be prefixed with `custom_`:
+
+```python
+components = EntityComponents(
+    telemetry=TelemetryComponent(latitude=40.7128),
+    custom_weather={"wind_speed": 12, "gusts": 18},  # Custom component
+)
+```
+
+## Entity Types Guide
+
+Atlas Command supports several entity types, each with different purposes and component structures. All entities are created using the `create_entity()` method, but the `entity_type` parameter and `components` structure differ based on what you're representing.
+
+### Assets
+
+**Purpose:** Assets represent taskable autonomous agents that can execute commands and report telemetry. Examples include drones, rovers, security cameras, and other controllable hardware.
+
+**When to use:** Register any physical or virtual device that can receive tasks from Atlas Command.
+
+**Required fields:**
+- `entity_id`: Unique identifier for the asset (string)
+- `entity_type`: Must be `"asset"` (string)
+- `alias`: Human-readable name for the asset (string)
+- `subtype`: Asset subtype (string, e.g., "drone", "rover", "camera")
+
+**Common components:**
+- `telemetry`: Location and movement data (`latitude`, `longitude`, `altitude_m`, `speed_m_s`, `heading_deg`)
+- `task_catalog`: Supported task types the asset can execute
+- `health`: System status (e.g., `battery_percent`)
+- `communications`: Connection state (`link_state`)
+- `sensor_refs`: Array of attached sensor configurations
+- `media_refs`: Array of object references for camera feeds or thumbnails
+
+**Example:**
+
+```python
+async with AtlasCommandHttpClient("http://localhost:8000") as client:
+    asset = await client.create_entity(
+        entity_id="drone-alpha-01",
+        entity_type="asset",
+        alias="Drone Alpha 01",
+        subtype="drone",
+        components={
+            "telemetry": {
+                "latitude": 40.7128,
+                "longitude": -74.0060,
+                "altitude_m": 120,
+                "speed_m_s": 8.2,
+                "heading_deg": 165
+            },
+            "task_catalog": {
+                "supported_tasks": ["move_to_location", "survey_grid"]
+            },
+            "health": {
+                "battery_percent": 76
+            },
+            "communications": {
+                "link_state": "connected"
+            }
+        }
+    )
+```
+
+### Tracks
+
+**Purpose:** Tracks represent observed entities detected by sensors or other assets. They are passive entities that track movement and characteristics of detected objects, but cannot receive tasks.
+
+**When to use:** Register any detected object or entity that needs to be monitored but not controlled. Examples include vehicles, people, or other objects detected by security cameras or radar systems.
+
+**Required fields:**
+- `entity_id`: Unique identifier for the track (string)
+- `entity_type`: Must be `"track"` (string)
+- `alias`: Human-readable name for the track (string)
+- `subtype`: Track subtype (string, e.g., "vehicle", "person", "unknown")
+
+**Common components:**
+- `telemetry`: Current location and movement data
+- `mil_view`: Classification and tracking information (`classification`: friendly/hostile/neutral/unknown/civilian, `last_seen`)
+- `sensor_refs`: Sensors that detected this track
+- `media_refs`: Object references for images or videos of the track
+
+**Example:**
+
+```python
+async with AtlasCommandHttpClient("http://localhost:8000") as client:
+    track = await client.create_entity(
+        entity_id="target-alpha",
+        entity_type="track",
+        alias="Target Alpha",
+        subtype="vehicle",
+        components={
+            "telemetry": {
+                "latitude": 40.7128,
+                "longitude": -74.0060,
+                "altitude_m": 120,
+                "speed_m_s": 8.2,
+                "heading_deg": 165
+            },
+            "mil_view": {
+                "classification": "unknown",
+                "last_seen": "2025-11-23T10:05:00Z"
+            }
+        }
+    )
+```
+
+### Geofeatures
+
+**Purpose:** Geofeatures represent geographic features or zones on the map. They can be points, lines, polygons, or circles representing waypoints, routes, boundaries, restricted areas, or other geographic annotations.
+
+**When to use:** Register any geographic annotation that needs to be displayed on the map. Common use cases include waypoints, patrol routes, no-fly zones, survey areas, or boundaries.
+
+**Required fields:**
+- `entity_id`: Unique identifier for the geofeature (string)
+- `entity_type`: Must be `"geofeature"` (string)
+- `alias`: Human-readable name for the geofeature (string)
+- `subtype`: Geofeature subtype (string, e.g., "waypoint", "route", "zone", "boundary")
+- `components.geometry`: Geometry definition based on type
+
+**Geometry types:**
+
+#### Point Geofeature
+
+A single coordinate location. Use for waypoints or point-of-interest markers.
+
+```python
+async with AtlasCommandHttpClient("http://localhost:8000") as client:
+    point = await client.create_entity(
+        entity_id="waypoint-alpha",
+        entity_type="geofeature",
+        alias="Waypoint Alpha",
+        subtype="waypoint",
+        components={
+            "geometry": {
+                "type": "Point",
+                "coordinates": [-74.0060, 40.7128]  # [longitude, latitude]
+            }
+        }
+    )
+```
+
+#### LineString Geofeature
+
+A path or route defined by multiple coordinates. Use for patrol routes, flight paths, or boundaries.
+
+```python
+async with AtlasCommandHttpClient("http://localhost:8000") as client:
+    linestring = await client.create_entity(
+        entity_id="patrol-route-alpha",
+        entity_type="geofeature",
+        alias="Patrol Route Alpha",
+        subtype="route",
+        components={
+            "geometry": {
+                "type": "LineString",
+                "coordinates": [
+                    [-74.0060, 40.7128],
+                    [-74.0070, 40.7130],
+                    [-74.0080, 40.7135],
+                    [-74.0090, 40.7140]
+                ]  # Array of [longitude, latitude] pairs
+            }
+        }
+    )
+```
+
+#### Polygon Geofeature
+
+A closed area defined by coordinates. The first and last coordinate must be the same to close the polygon. Use for restricted zones, survey areas, or regions of interest.
+
+```python
+async with AtlasCommandHttpClient("http://localhost:8000") as client:
+    polygon = await client.create_entity(
+        entity_id="area-of-interest-alpha",
+        entity_type="geofeature",
+        alias="Area of Interest Alpha",
+        subtype="zone",
+        components={
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [[
+                    [-74.0060, 40.7128],
+                    [-74.0070, 40.7128],
+                    [-74.0070, 40.7130],
+                    [-74.0060, 40.7130],
+                    [-74.0060, 40.7128]  # Must close the polygon
+                ]]  # Note: coordinates is an array of coordinate rings
+            }
+        }
+    )
+```
+
+#### Circle Geofeature
+
+A circular area defined by a center point and radius. Use for circular zones, coverage areas, or proximity alerts.
+
+```python
+async with AtlasCommandHttpClient("http://localhost:8000") as client:
+    circle = await client.create_entity(
+        entity_id="perimeter-epsilon",
+        entity_type="geofeature",
+        alias="Perimeter Epsilon",
+        subtype="zone",
+        components={
+            "geometry": {
+                "point_lat": 40.7128,  # Center latitude
+                "point_lng": -74.0060,  # Center longitude
+                "radius_m": 500  # Radius in meters
+            },
+            "geometry_type": "circle"
+        }
+    )
+```
+
+**Common components for geofeatures:**
+- `geometry`: Geometry definition (required)
+- `geometry_type`: Explicit type specification (for circles: `"circle"`)
+- `description`: Human-readable description of the geofeature
+- `mil_view`: Classification metadata if applicable
+
+## Features
+
+- Uses `httpx.AsyncClient` under the hood with pluggable transport/timeouts.
+- Convenience methods for every public endpoint:
+  - `get_root`, `get_health`, `get_readiness`
+  - `list_entities`, `get_entity`, `create_entity`, `update_entity`, `delete_entity`,
+    `get_entity_by_alias`, `update_entity_telemetry`, `checkin_entity`
+  - `list_tasks`, `create_task`, `get_task`, `update_task`, `delete_task`,
+    `get_tasks_by_entity`, `start_task`, `complete_task`, `fail_task`
+- `list_objects`, `create_object` (uploads a file via `/objects/upload`), `get_object`,
+- `create_object_metadata`, `update_object`, `delete_object`, `view_object`,
+- `get_objects_by_entity`, `get_objects_by_task`, `find_orphaned_objects`,
+- `add_object_reference`, `remove_object_reference`, `get_object_references`,
+- `validate_object_references`, `cleanup_object_references`
+  - `get_changed_since`, `get_full_dataset`
+- Optional bearer token support via the `token=` constructor parameter.
+- Context manager support (`async with client:`) to manage connection lifecycle.
+
+## Field reference
+
+### Client configuration
+
+- `AtlasCommandHttpClient(base_url, *, token=None, timeout=10.0, transport=None)` – requires `base_url`,
+  optional `token`, `timeout`, and `transport`.
+
+### Service
+
+- `get_root()` – returns the API root metadata.
+- `get_health()` – returns `/health` status payload.
+- `get_readiness()` – returns `/readiness` status payload.
+
+### Entities
+
+- `list_entities(*, limit=100, offset=0)` – optional pagination parameters based on defaults.
+- `get_entity(entity_id)` – requires `entity_id`.
+- `get_entity_by_alias(alias)` – requires `alias`.
+- `create_entity(*, entity_id, entity_type, alias, subtype, components=None)` – requires `entity_id`, `entity_type`, `alias`, and `subtype`;
+  `components` are optional.
+- `update_entity(entity_id, *, components=None, subtype=None)` – requires `entity_id`; at least one of `components` or `subtype` must be provided.
+- `delete_entity(entity_id)` – requires `entity_id`.
+- `update_entity_telemetry(entity_id, *, latitude=None, longitude=None, altitude_m=None, speed_m_s=None, heading_deg=None)`
+  – requires `entity_id`; telemetry values are optional and only set when provided.
+- `checkin_entity(entity_id, *, status=None, latitude=None, longitude=None, altitude_m=None, speed_m_s=None, heading_deg=None, status_filter="pending,in_progress", limit=10, since=None, fields=None)`
+  – requires `entity_id`; optional status/telemetry and task filters are accepted (`fields="minimal"` is supported).
+  Response includes `entity`, `tasks`, `task_count`, and `task_limit`.
+
+### Tasks
+
+- `list_tasks(*, status=None, limit=25, offset=0)` – optional `status`, page size, and offset.
+- `get_task(task_id)` – requires `task_id`.
+- `create_task(*, task_id, status="pending", entity_id=None, components=None, extra=None)` – requires `task_id`; 
+  `status` defaults to `"pending"`, `entity_id`, `components`, and `extra` are optional.
+- `update_task(task_id, *, status=None, entity_id=None, components=None, extra=None)` – requires `task_id`; 
+  all other parameters are optional and only update when provided.
+- `delete_task(task_id)` – requires `task_id`.
+- `get_tasks_by_entity(entity_id, *, status=None, limit=25, offset=0)` – requires `entity_id`; filters optional.
+- `start_task(task_id)` / `complete_task(task_id)` – each requires `task_id`.
+- `fail_task(task_id, *, error_message=None, error_details=None)` – requires `task_id`; error info optional.
+
+### Objects
+
+- `list_objects(*, content_type=None, type=None, limit=100, offset=0)` – optional filters.
+- `get_object(object_id)` – requires `object_id`.
+- `create_object(file, *, object_id, content_type, usage_hint=None, referenced_by=None)` – requires `file` data, `object_id`, and a MIME `content_type`;
+  `usage_hint` and `referenced_by` optional.
+- `create_object_metadata(*, object_id, path=None, bucket=None, size_bytes=None, content_type=None, object_type=None, usage_hints=None, referenced_by=None, extra=None)`
+  – creates object metadata entries via `/objects`.
+- `update_object(object_id, *, usage_hints=None, referenced_by=None)` – requires `object_id`; metadata optional.
+- `delete_object(object_id)` – requires `object_id`.
+- `view_object(object_id)` – returns viewable object text content with content metadata.
+- `get_objects_by_entity(entity_id, *, limit=50, offset=0)` – requires `entity_id`, optional pagination.
+- `get_objects_by_task(task_id, *, limit=50, offset=0)` – requires `task_id`, optional pagination.
+- `add_object_reference(object_id, *, entity_id=None, task_id=None)` / `remove_object_reference(...)`
+  – require `object_id`; provide either `entity_id` or `task_id` to target the reference.
+- `find_orphaned_objects(*, limit=100, offset=0)` – optional pagination.
+- `get_object_references(object_id)` / `validate_object_references(object_id)` / `cleanup_object_references(object_id)` –
+  each requires `object_id`.
+
+**Pagination metadata:** Atlas list endpoints expose `X-Total-Count`, `X-Limit`, `X-Offset`, and
+`X-Returned-Count` headers for page bookkeeping.
+
+### Queries
+
+- `get_changed_since(since, *, limit_per_type=None)` – requires `since`; optional per-type limit. Response includes `deleted_entities`, `deleted_tasks`, and `deleted_objects` (in-memory, ~1h TTL).
+- `get_full_dataset(*, entity_limit=None, task_limit=None, object_limit=None)` – filters are optional.
+
+## Configuration
+
+```python
+client = AtlasCommandHttpClient(
+    "https://atlas.example.com",
+    token="my-api-token",
+    timeout=30.0,
+)
+```
+
+You can also pass a custom `httpx` transport for testing:
+
+```python
+transport = httpx.MockTransport(my_handler)
+client = AtlasCommandHttpClient("http://testserver", transport=transport)
+```
+
+## Error Handling
+
+The client raises exceptions in the following scenarios:
+
+### HTTP Errors
+
+All API calls use `httpx.Response.raise_for_status()` which raises `httpx.HTTPStatusError` for 4xx and 5xx responses:
+
+```python
+import httpx
+from atlas_asset_http_client_python import AtlasCommandHttpClient
+
+async with AtlasCommandHttpClient("http://localhost:8000") as client:
+    try:
+        entity = await client.get_entity("nonexistent-id")
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            print("Entity not found")
+        else:
+            print(f"HTTP error: {e.response.status_code}")
+```
+
+### Client Errors
+
+| Exception | Condition |
+|-----------|-----------|
+| `RuntimeError("Client is closed")` | Attempting to use the client after calling `aclose()` or exiting the context manager |
+| `ValueError("update_entity requires at least one of: components, subtype")` | Calling `update_entity()` without providing either `components` or `subtype` |
+| `RuntimeError` | `create_object()` with `referenced_by` but the upload response doesn't include `object_id` |
+
+### Validation Errors
+
+When using typed components, Pydantic validation may raise `pydantic.ValidationError`:
+
+```python
+from atlas_asset_http_client_python import EntityComponents, HealthComponent
+
+try:
+    components = EntityComponents(
+        health=HealthComponent(battery_percent=150)  # Invalid: must be 0-100 (inclusive)
+    )
+except pydantic.ValidationError as e:
+    print(f"Validation error: {e}")
+
+try:
+    components = EntityComponents(
+        unknown_component={"foo": "bar"}  # Invalid: unknown component
+    )
+except ValueError as e:
+    print(f"Unknown component: {e}")  # "Unknown component 'unknown_component'. Custom components must be prefixed with 'custom_'"
+```
+
+## Breaking changes
+
+- `create_entity` now requires `alias` and no longer accepts `published_at`, `updated_at`, or `extra`.
+- `create_object` is the only object-creation helper and always uploads a file via `/objects/upload`; storage metadata and sizing is server-managed.
+
+## Testing
+
+Run the suite with:
+
+```bash
+pip install -e .[dev]
+pytest
+```
+
+The tests use `httpx.MockTransport` so they do not require a running Atlas Command instance.
