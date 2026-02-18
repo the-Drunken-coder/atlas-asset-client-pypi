@@ -151,14 +151,39 @@ jobs:
             method="POST",
           )
 
-          with urllib.request.urlopen(req, timeout=90) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
+          import time
 
-          content = (data.get("choices") or [{}])[0].get("message", {}).get("content", "").strip()
+          content = ""
+          last = None
+          for attempt in range(3):
+            try:
+              with urllib.request.urlopen(req, timeout=90) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+
+              if isinstance(data, dict) and data.get("error"):
+                last = data["error"]
+                raise RuntimeError(str(last))
+
+              content = (data.get("choices") or [{}])[0].get("message", {}).get("content", "").strip()
+              if content.startswith(f"## [{new_version}] - {date}"):
+                break
+
+              last = data
+              content = ""
+            except Exception as e:
+              last = repr(e)
+              content = ""
+
+            time.sleep(2 * (attempt + 1))
+
           if not content.startswith(f"## [{new_version}] - {date}"):
-            print("::error::LLM response did not start with expected heading.", file=sys.stderr)
-            print("LLM response:", content, file=sys.stderr)
-            sys.exit(1)
+            # Fallback: keep releases unblocked if OpenRouter is temporarily unavailable.
+            bullets = [
+              "- Synced changes from the ATLAS monorepo.",
+              f"- Version bump to {new_version}.",
+              "- Internal updates and maintenance.",
+            ]
+            content = f"## [{new_version}] - {date}\n" + "\n".join(bullets)
 
           changelog_path = "CHANGELOG.md"
           try:
