@@ -62,6 +62,36 @@ jobs:
             echo "version_changed=true" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Skip if already on PyPI
+        id: pypi
+        shell: bash
+        env:
+          PROJECT_NAME: ${{ steps.versions.outputs.project_name }}
+          NEW_VERSION: ${{ steps.versions.outputs.new_version }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import urllib.error
+          import urllib.request
+
+          name = os.environ["PROJECT_NAME"]
+          version = os.environ["NEW_VERSION"]
+
+          try:
+            with urllib.request.urlopen(f"https://pypi.org/pypi/{name}/json", timeout=20) as resp:
+              data = json.loads(resp.read().decode("utf-8"))
+          except urllib.error.HTTPError as e:
+            if e.code == 404:
+              print("exists_on_pypi=false")
+              raise SystemExit(0)
+            raise
+
+          releases = data.get("releases", {})
+          print("exists_on_pypi=" + ("true" if version in releases else "false"))
+          PY | tee -a "$GITHUB_OUTPUT"
+
       - name: Sync root README from package README
         shell: bash
         run: |
@@ -73,7 +103,7 @@ jobs:
           cp package/README.md README.md
 
       - name: Update CHANGELOG.md via OpenRouter
-        if: steps.versions.outputs.version_changed == 'true'
+        if: steps.pypi.outputs.exists_on_pypi != 'true'
         shell: bash
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
@@ -230,7 +260,7 @@ jobs:
           git push
 
       - name: Setup Python
-        if: steps.versions.outputs.version_changed == 'true'
+        if: steps.pypi.outputs.exists_on_pypi != 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -238,7 +268,7 @@ jobs:
           cache-dependency-path: package/pyproject.toml
 
       - name: Install deps + run tests
-        if: steps.versions.outputs.version_changed == 'true'
+        if: steps.pypi.outputs.exists_on_pypi != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -249,7 +279,7 @@ jobs:
           mypy src/
 
       - name: Build distributions
-        if: steps.versions.outputs.version_changed == 'true'
+        if: steps.pypi.outputs.exists_on_pypi != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -257,39 +287,8 @@ jobs:
           cd package
           python -m build
 
-      - name: Skip if already on PyPI
-        if: steps.versions.outputs.version_changed == 'true'
-        id: pypi
-        shell: bash
-        env:
-          PROJECT_NAME: ${{ steps.versions.outputs.project_name }}
-          NEW_VERSION: ${{ steps.versions.outputs.new_version }}
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import json
-          import os
-          import urllib.error
-          import urllib.request
-
-          name = os.environ["PROJECT_NAME"]
-          version = os.environ["NEW_VERSION"]
-
-          try:
-            with urllib.request.urlopen(f"https://pypi.org/pypi/{name}/json", timeout=20) as resp:
-              data = json.loads(resp.read().decode("utf-8"))
-          except urllib.error.HTTPError as e:
-            if e.code == 404:
-              print("exists_on_pypi=false")
-              raise SystemExit(0)
-            raise
-
-          releases = data.get("releases", {})
-          print("exists_on_pypi=" + ("true" if version in releases else "false"))
-          PY | tee -a "$GITHUB_OUTPUT"
-
       - name: Publish to PyPI
-        if: steps.versions.outputs.version_changed == 'true' && steps.pypi.outputs.exists_on_pypi != 'true'
+        if: steps.pypi.outputs.exists_on_pypi != 'true'
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           user: __token__
