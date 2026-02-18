@@ -70,7 +70,7 @@ jobs:
           NEW_VERSION: ${{ steps.versions.outputs.new_version }}
         run: |
           set -euo pipefail
-          python3 - <<'PY'
+          python3 - <<'PY' | tee -a "$GITHUB_OUTPUT"
           import json
           import os
           import urllib.error
@@ -90,7 +90,7 @@ jobs:
 
           releases = data.get("releases", {})
           print("exists_on_pypi=" + ("true" if version in releases else "false"))
-          PY | tee -a "$GITHUB_OUTPUT"
+          PY
 
       - name: Sync root README from package README
         shell: bash
