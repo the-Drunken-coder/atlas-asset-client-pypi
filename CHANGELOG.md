@@ -1,5 +1,10 @@
 ﻿# Changelog
 
+## [0.3.10] - 2026-02-19
+- Synced changes from the ATLAS monorepo.
+- Version bump to 0.3.10.
+- Internal updates and maintenance.
+
 ## [0.3.9] - 2026-02-19
 
 - Synchronized source from upstream ATLAS monorepo (commit c990112).
