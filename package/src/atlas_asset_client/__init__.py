@@ -9,15 +9,18 @@ When installing 'atlas-asset-client', you can import as 'atlas_asset_client'.
 # Re-export everything from the actual implementation
 from atlas_asset_http_client_python import (
     AtlasCommandHttpClient,
+    CommandComponent,
     CommunicationsComponent,
     EntityComponents,
     GeometryComponent,
     HealthComponent,
+    HeartbeatComponent,
     MediaRefItem,
     MilViewComponent,
     ObjectMetadata,
     ObjectReferenceItem,
     SensorRefItem,
+    StatusComponent,
     TaskCatalogComponent,
     TaskComponents,
     TaskParametersComponent,
@@ -42,8 +45,11 @@ __all__ = [
     "SensorRefItem",
     "CommunicationsComponent",
     "TaskQueueComponent",
+    "StatusComponent",
+    "HeartbeatComponent",
     # Task components
     "TaskComponents",
+    "CommandComponent",
     "TaskParametersComponent",
     "TaskProgressComponent",
     # Object metadata
