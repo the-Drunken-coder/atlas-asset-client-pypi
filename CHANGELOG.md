@@ -1,5 +1,11 @@
 ﻿# Changelog
 
+## [0.3.9] - 2026-02-19
+
+- Synchronized source from upstream ATLAS monorepo (commit c990112).
+- Updated package metadata, `README.md`, and version strings to 0.3.9.
+- No functional changes; internal maintenance release only.
+
 ## [0.3.8] - 2026-02-18
 
 - Internal maintenance release with no user-visible changes.
