@@ -1,5 +1,12 @@
 ﻿# Changelog
 
+## [0.3.13] - 2026-02-20
+
+- Routine synchronization from upstream ATLAS monorepo (commit a1830f6)
+- Internal updates to HTTP client implementation and test suite
+- Updated package metadata and version bump to 0.3.13
+- This release consists primarily of internal maintenance and code syncing; no major user-facing API changes are expected
+
 ## [0.3.12] - 2026-02-20
 - Synced changes from the ATLAS monorepo.
 - Version bump to 0.3.12.
