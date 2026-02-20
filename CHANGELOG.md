@@ -1,5 +1,11 @@
 ﻿# Changelog
 
+## [0.3.11] - 2026-02-20
+
+- Synchronized source code with upstream ATLAS monorepo (commit f136df6).
+- Updated package metadata and version bump in `pyproject.toml`.
+- Internal synchronization only; no user-facing changes.
+
 ## [0.3.10] - 2026-02-19
 - Synced changes from the ATLAS monorepo.
 - Version bump to 0.3.10.
