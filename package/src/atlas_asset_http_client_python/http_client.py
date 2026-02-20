@@ -530,7 +530,7 @@ class AtlasCommandHttpClient:
         limit_per_type: Optional[int] = None,
     ) -> ChangedSinceResponse:
         params: dict[str, Any] = {"since": since}
-        if limit_per_type:
+        if limit_per_type is not None:
             params["limit_per_type"] = limit_per_type
         return await self._request("GET", "/queries/changed-since", params=params)
 
@@ -542,10 +542,10 @@ class AtlasCommandHttpClient:
         object_limit: Optional[int] = None,
     ) -> dict[str, Any]:
         params: dict[str, Any] = {}
-        if entity_limit:
+        if entity_limit is not None:
             params["entity_limit"] = entity_limit
-        if task_limit:
+        if task_limit is not None:
             params["task_limit"] = task_limit
-        if object_limit:
+        if object_limit is not None:
             params["object_limit"] = object_limit
         return await self._request("GET", "/queries/full", params=params or None)

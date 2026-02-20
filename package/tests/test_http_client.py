@@ -166,6 +166,37 @@ async def test_get_changed_since_passes_params():
 
 
 @pytest.mark.asyncio
+async def test_get_changed_since_preserves_zero_limit_per_type():
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.params["since"] == "2025-01-01T00:00:00Z"
+        assert request.url.params["limit_per_type"] == "0"
+        return httpx.Response(200, json={"entities": [], "tasks": [], "objects": []})
+
+    client: Any = AtlasCommandHttpClient(
+        "http://atlas.local",
+        transport=httpx.MockTransport(handler),
+    )
+    async with client:
+        await client.get_changed_since("2025-01-01T00:00:00Z", limit_per_type=0)
+
+
+@pytest.mark.asyncio
+async def test_get_full_dataset_preserves_zero_limits():
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.params["entity_limit"] == "0"
+        assert request.url.params["task_limit"] == "0"
+        assert request.url.params["object_limit"] == "0"
+        return httpx.Response(200, json={"entities": [], "tasks": [], "objects": []})
+
+    client: Any = AtlasCommandHttpClient(
+        "http://atlas.local",
+        transport=httpx.MockTransport(handler),
+    )
+    async with client:
+        await client.get_full_dataset(entity_limit=0, task_limit=0, object_limit=0)
+
+
+@pytest.mark.asyncio
 async def test_checkin_entity_sends_payload_and_params():
     captured: dict[str, httpx.Request] = {}
 
