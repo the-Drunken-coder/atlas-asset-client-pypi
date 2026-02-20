@@ -1,5 +1,10 @@
 ﻿# Changelog
 
+## [0.3.12] - 2026-02-20
+- Synced changes from the ATLAS monorepo.
+- Version bump to 0.3.12.
+- Internal updates and maintenance.
+
 ## [0.3.11] - 2026-02-20
 
 - Synchronized source code with upstream ATLAS monorepo (commit f136df6).
