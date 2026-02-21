@@ -1,5 +1,11 @@
 ﻿# Changelog
 
+## [0.3.14] - 2026-02-21
+
+- Synchronized source from upstream ATLAS monorepo (commit 811b976).
+- Internal improvements to HTTP client implementation.
+- Updated package metadata and version alignment.
+
 ## [0.3.13] - 2026-02-20
 
 - Routine synchronization from upstream ATLAS monorepo (commit a1830f6)
