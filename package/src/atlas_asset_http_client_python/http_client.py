@@ -177,7 +177,7 @@ class AtlasCommandHttpClient:
         altitude_m: Optional[float] = None,
         speed_m_s: Optional[float] = None,
         heading_deg: Optional[float] = None,
-        status_filter: str = "pending,in_progress",
+        status_filter: str = "pending,acknowledged",
         limit: int = 10,
         since: Optional[str] = None,
         fields: Optional[str] = None,
@@ -292,8 +292,11 @@ class AtlasCommandHttpClient:
             params["status"] = status
         return await self._request("GET", f"/entities/{entity_id}/tasks", params=params)
 
+    async def acknowledge_task(self, task_id: str) -> dict[str, Any]:
+        return await self._request("POST", f"/tasks/{task_id}/acknowledge", json={})
+
     async def start_task(self, task_id: str) -> dict[str, Any]:
-        return await self._request("POST", f"/tasks/{task_id}/start", json={})
+        return await self.acknowledge_task(task_id)
 
     async def complete_task(
         self,

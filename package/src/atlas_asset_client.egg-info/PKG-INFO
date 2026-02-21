@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: atlas-asset-client
-Version: 0.3.12
+Version: 0.3.13
 Summary: Async HTTP client for Atlas Command.
 Author: ATLAS Team
 License-Expression: MIT
