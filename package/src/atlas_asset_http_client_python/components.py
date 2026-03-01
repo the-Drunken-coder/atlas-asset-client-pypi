@@ -357,18 +357,21 @@ class ObjectMetadata(AtlasModel):
 
 
 def components_to_dict(
-    components: Optional[Union[EntityComponents, TaskComponents]],
+    components: Optional[Union[EntityComponents, TaskComponents, dict[str, Any]]],
 ) -> Optional[dict[str, Any]]:
     """Convert typed components to a dictionary for API transmission.
 
     Args:
-        components: Typed component model
+        components: Typed component model or raw dict
 
     Returns:
         Dictionary suitable for JSON serialization
     """
     if components is None:
         return None
+
+    if isinstance(components, dict):
+        return components
 
     if isinstance(components, (EntityComponents, TaskComponents)):
         return components.model_dump(exclude_none=True, by_alias=True)

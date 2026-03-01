@@ -259,10 +259,10 @@ class TestComponentsToDict:
         result = components_to_dict(components)
         assert result == {"telemetry": {"latitude": 40.7128, "longitude": -74.0060}}
 
-    def test_with_raw_dict_raises_type_error(self):
+    def test_with_raw_dict_passes_through(self):
         raw_components = {"telemetry": {"latitude": 40.7128}}
-        with pytest.raises(TypeError, match="Expected EntityComponents or TaskComponents"):
-            components_to_dict(raw_components)
+        result = components_to_dict(raw_components)
+        assert result == {"telemetry": {"latitude": 40.7128}}
 
     def test_with_none(self):
         result = components_to_dict(None)
@@ -369,10 +369,12 @@ class TestHttpClientWithTypedComponents:
         assert payload["components"]["telemetry"]["latitude"] == 41.0
 
     @pytest.mark.asyncio
-    async def test_raw_dict_rejected_by_create_entity(self):
-        """Verify raw dict components are rejected (no longer supported)."""
+    async def test_raw_dict_accepted_by_create_entity(self):
+        """Verify raw dict components are coerced to EntityComponents."""
+        captured: dict[str, httpx.Request] = {}
 
         async def handler(request: httpx.Request) -> httpx.Response:
+            captured["request"] = request
             return httpx.Response(200, json={"entity_id": "asset-1"})
 
         client = AtlasCommandHttpClient(
@@ -383,11 +385,15 @@ class TestHttpClientWithTypedComponents:
         raw_components = {"telemetry": {"latitude": 40.7128, "longitude": -74.0060}}
 
         async with client:
-            with pytest.raises(TypeError, match="Expected EntityComponents or TaskComponents"):
-                await client.create_entity(
-                    entity_id="asset-1",
-                    entity_type="asset",
-                    alias="demo",
-                    subtype="drone",
-                    components=raw_components,
-                )
+            result = await client.create_entity(
+                entity_id="asset-1",
+                entity_type="asset",
+                alias="demo",
+                subtype="drone",
+                components=raw_components,
+            )
+
+        assert result["entity_id"] == "asset-1"
+        req = captured["request"]
+        payload = json.loads(req.content)
+        assert payload["components"]["telemetry"]["latitude"] == 40.7128

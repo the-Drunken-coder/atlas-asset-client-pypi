@@ -139,6 +139,8 @@ class AtlasCommandHttpClient:
         subtype: str,
         components: Optional[EntityComponents] = None,
     ) -> dict[str, Any]:
+        if isinstance(components, dict):
+            components = EntityComponents(**components)
         payload: dict[str, Any] = {
             "entity_id": entity_id,
             "entity_type": entity_type,
@@ -157,6 +159,8 @@ class AtlasCommandHttpClient:
     ) -> dict[str, Any]:
         if components is None and subtype is None:
             raise ValueError("update_entity requires at least one of: components, subtype")
+        if isinstance(components, dict):
+            components = EntityComponents(**components)
         payload: dict[str, Any] = {}
         if components is not None:
             payload["components"] = components_to_dict(components)
