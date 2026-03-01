@@ -1,5 +1,12 @@
 ﻿# Changelog
 
+## [0.3.15] - 2026-03-01
+
+- `components_to_dict` now accepts raw dictionaries (`dict[str, Any]`) and returns them unchanged, removing the previous TypeError for non-model inputs.
+- `AtlasCommandHttpClient.create_entity` now accepts raw dictionaries for the `components` parameter, automatically coercing them to `EntityComponents` instances.
+- `AtlasCommandHttpClient.update_entity` now accepts raw dictionaries for the `components` parameter, automatically coercing them to `EntityComponents` instances.
+- Expanded type hints on component parameters to reflect support for both typed models and raw dictionaries.
+
 ## [0.3.14] - 2026-02-21
 
 - Synchronized source from upstream ATLAS monorepo (commit 811b976).
