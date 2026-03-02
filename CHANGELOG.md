@@ -1,5 +1,11 @@
 ﻿# Changelog
 
+## [0.3.16] - 2026-03-02
+
+- Synchronized package source with upstream ATLAS monorepo commit 1d87541.
+- Refactored HTTP client tests to centralize mock API token configuration, eliminating hardcoded bearer token strings in favor of a reusable constant.
+- Standardized authorization header assertions to reference the centralized token, improving test maintainability and readability.
+
 ## [0.3.15] - 2026-03-01
 
 - `components_to_dict` now accepts raw dictionaries (`dict[str, Any]`) and returns them unchanged, removing the previous TypeError for non-model inputs.
