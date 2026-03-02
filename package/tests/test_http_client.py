@@ -10,6 +10,8 @@ import httpx
 import pytest
 from atlas_asset_http_client_python import AtlasCommandHttpClient
 
+MOCK_API_TOKEN = "mock-token-for-testing"
+
 
 def build_client(json_map: dict[tuple[str, str], tuple[int, Any]]) -> AtlasCommandHttpClient:
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -43,7 +45,7 @@ async def test_create_entity_posts_payload():
     client: Any = AtlasCommandHttpClient(
         "http://atlas.local",
         transport=httpx.MockTransport(handler),
-        token="secret",
+        token=MOCK_API_TOKEN,
     )
     async with client:
         entity = await client.create_entity(
@@ -52,7 +54,7 @@ async def test_create_entity_posts_payload():
 
     assert entity["entity_id"] == "asset-1"
     req = captured["request"]
-    assert req.headers["authorization"] == "Bearer secret"
+    assert req.headers["authorization"] == f"Bearer {MOCK_API_TOKEN}"
     assert json.loads(req.content)["alias"] == "demo"
 
 
