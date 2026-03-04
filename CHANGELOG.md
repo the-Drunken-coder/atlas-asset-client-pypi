@@ -1,5 +1,12 @@
 ﻿# Changelog
 
+## [0.3.17] - 2026-03-04
+
+- Added automatic dict-to-dataclass coercion for nested component fields, allowing plain dictionaries to be passed to constructors (e.g., `EntityComponents(health={"battery_percent": 76})`) instead of requiring pre-instantiated objects.
+- Relaxed field validation to accept arbitrary attribute names without the `custom_` prefix on component models, enabling direct use of API-specific parameters.
+- Updated serialization logic to include extra fields on models that explicitly allow them, not just those prefixed with `custom_`.
+- Removed accidentally committed `.egg-info` metadata directory from the package source tree.
+
 ## [0.3.16] - 2026-03-02
 
 - Synchronized package source with upstream ATLAS monorepo commit 1d87541.
