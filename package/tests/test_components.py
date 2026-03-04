@@ -16,6 +16,8 @@ from atlas_asset_http_client_python import (
     HeartbeatComponent,
     MediaRefItem,
     MilViewComponent,
+    ObjectMetadata,
+    ObjectReferenceItem,
     SensorRefItem,
     StatusComponent,
     TaskCatalogComponent,
@@ -220,9 +222,9 @@ class TestTaskParametersComponent:
         params = TaskParametersComponent(custom_speed=5.0)
         assert params.custom_speed == 5.0
 
-    def test_unknown_field_without_prefix_raises(self):
-        with pytest.raises(ValueError, match="Unknown task parameter"):
-            TaskParametersComponent(speed=5.0)
+    def test_arbitrary_field_accepted(self):
+        params = TaskParametersComponent(speed=5.0)
+        assert params.speed == 5.0
 
 
 class TestTelemetryValidation:
@@ -397,3 +399,112 @@ class TestHttpClientWithTypedComponents:
         req = captured["request"]
         payload = json.loads(req.content)
         assert payload["components"]["telemetry"]["latitude"] == 40.7128
+
+
+class TestDictToDataclassCoercion:
+    """Tests for automatic dict-to-dataclass coercion in container __init__ methods."""
+
+    # --- EntityComponents ---
+
+    def test_entity_health_dict_coerced(self):
+        ec = EntityComponents(health={"battery_percent": 76})
+        assert isinstance(ec.health, HealthComponent)
+        assert ec.health.battery_percent == 76
+
+    def test_entity_telemetry_dict_coerced(self):
+        ec = EntityComponents(telemetry={"latitude": 40.0, "longitude": -74.0})
+        assert isinstance(ec.telemetry, TelemetryComponent)
+        assert ec.telemetry.latitude == 40.0
+
+    def test_entity_invalid_nested_field_raises(self):
+        with pytest.raises(TypeError, match="unexpected keyword argument"):
+            EntityComponents(health={"invalid_field": 123})
+
+    def test_entity_nested_validation_triggers(self):
+        with pytest.raises(ValueError, match="battery_percent must be between"):
+            EntityComponents(health={"battery_percent": 200})
+
+    def test_entity_media_refs_list_coerced(self):
+        ec = EntityComponents(
+            media_refs=[{"object_id": "obj-1", "role": "camera_feed"}],
+        )
+        assert isinstance(ec.media_refs[0], MediaRefItem)
+        assert ec.media_refs[0].object_id == "obj-1"
+
+    def test_entity_sensor_refs_list_coerced(self):
+        ec = EntityComponents(
+            sensor_refs=[{"sensor_id": "s1", "type": "radar"}],
+        )
+        assert isinstance(ec.sensor_refs[0], SensorRefItem)
+
+    def test_entity_invalid_list_item_raises(self):
+        with pytest.raises(TypeError, match="unexpected keyword argument"):
+            EntityComponents(media_refs=[{"bad_key": "x"}])
+
+    def test_entity_preinstantiated_still_works(self):
+        ec = EntityComponents(health=HealthComponent(battery_percent=50))
+        assert isinstance(ec.health, HealthComponent)
+        assert ec.health.battery_percent == 50
+
+    def test_entity_mixed_dict_and_instance(self):
+        ec = EntityComponents(
+            health={"battery_percent": 42},
+            telemetry=TelemetryComponent(latitude=10.0),
+        )
+        assert isinstance(ec.health, HealthComponent)
+        assert isinstance(ec.telemetry, TelemetryComponent)
+
+    def test_entity_model_dump_after_dict_coercion(self):
+        ec = EntityComponents(
+            health={"battery_percent": 76},
+            telemetry={"latitude": 40.0, "longitude": -74.0},
+        )
+        result = ec.model_dump(exclude_none=True)
+        assert result["health"] == {"battery_percent": 76}
+        assert result["telemetry"]["latitude"] == 40.0
+
+    # --- TaskComponents ---
+
+    def test_task_command_dict_coerced(self):
+        tc = TaskComponents(command={"type": "move"})
+        assert isinstance(tc.command, CommandComponent)
+        assert tc.command.type == "move"
+
+    def test_task_progress_dict_coerced(self):
+        tc = TaskComponents(
+            progress={"percent": 50, "updated_at": "2025-01-01T00:00:00Z"},
+        )
+        assert isinstance(tc.progress, TaskProgressComponent)
+        assert tc.progress.percent == 50
+
+    def test_task_invalid_nested_field_raises(self):
+        with pytest.raises(TypeError, match="unexpected keyword argument"):
+            TaskComponents(command={"invalid": "field"})
+
+    # --- TaskParametersComponent ---
+
+    def test_task_parameters_known_fields_accepted(self):
+        tp = TaskParametersComponent(latitude=40.0, longitude=-74.0, altitude_m=100.0)
+        assert tp.latitude == 40.0
+        assert tp.longitude == -74.0
+        assert tp.altitude_m == 100.0
+
+    def test_task_parameters_custom_field_accepted(self):
+        tp = TaskParametersComponent(custom_speed=5.0)
+        assert tp.custom_speed == 5.0
+
+    def test_task_parameters_arbitrary_field_accepted(self):
+        tp = TaskParametersComponent(string_param="value", int_param=42)
+        assert tp.string_param == "value"
+        assert tp.int_param == 42
+
+    # --- ObjectMetadata ---
+
+    def test_object_metadata_referenced_by_coerced(self):
+        om = ObjectMetadata(referenced_by=[{"entity_id": "e1"}])
+        assert isinstance(om.referenced_by[0], ObjectReferenceItem)
+        assert om.referenced_by[0].entity_id == "e1"
+
+    def test_object_metadata_invalid_ref_raises(self):
+        with pytest.raises(TypeError, match="unexpected keyword argument"):
+            ObjectMetadata(referenced_by=[{"bad_key": "x"}])

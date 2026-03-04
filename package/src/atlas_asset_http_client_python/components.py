@@ -10,7 +10,18 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, fields
 from datetime import datetime
-from typing import Any, List, Literal, Optional, Union
+from functools import lru_cache
+from typing import (
+    Any,
+    ClassVar,
+    List,
+    Literal,
+    Optional,
+    Union,
+    get_args,
+    get_origin,
+    get_type_hints,
+)
 
 
 def _check_numeric(name: str, value: Any) -> None:
@@ -67,7 +78,9 @@ class AtlasModel:
                     res[f.name] = serialize(val)
                 # Include extra attributes (for models that allow extra fields)
                 for k, v in obj.__dict__.items():
-                    if k.startswith("custom_") and k not in res:
+                    if k not in res and (
+                        k.startswith("custom_") or getattr(obj, "_allow_extra", False)
+                    ):
                         res[k] = serialize(v)
                 return res
             elif isinstance(obj, list):
@@ -80,6 +93,55 @@ class AtlasModel:
         if exclude_none:
             return _exclude_none(data)
         return data
+
+
+@lru_cache(maxsize=None)
+def _cached_type_hints(cls: type) -> dict[str, Any]:
+    """Return resolved type hints for *cls*, cached per class."""
+    return get_type_hints(cls)
+
+
+def _coerce_field_value(cls: type, field_name: str, value: Any) -> Any:
+    """Coerce a dict (or list of dicts) to the expected dataclass type for *field_name*.
+
+    Uses the resolved type hints of *cls* to determine whether *value* should be
+    instantiated as a nested :class:`AtlasModel` subclass.  Plain values are
+    returned unchanged.
+    """
+    if value is None:
+        return value
+
+    hints = _cached_type_hints(cls)
+    if field_name not in hints:
+        return value
+
+    field_type = hints[field_name]
+
+    # Unwrap Optional[X] -> X
+    origin = get_origin(field_type)
+    args = get_args(field_type)
+    if origin is Union:
+        non_none = [a for a in args if a is not type(None)]
+        if len(non_none) == 1:
+            field_type = non_none[0]
+            origin = get_origin(field_type)
+            args = get_args(field_type)
+
+    # Dict -> dataclass coercion
+    if (
+        isinstance(value, dict)
+        and isinstance(field_type, type)
+        and issubclass(field_type, AtlasModel)
+    ):
+        return field_type(**value)
+
+    # List[DataclassType] -> coerce each dict item
+    if origin is list and args and isinstance(value, list):
+        item_type = args[0]
+        if isinstance(item_type, type) and issubclass(item_type, AtlasModel):
+            return [item_type(**item) if isinstance(item, dict) else item for item in value]
+
+    return value
 
 
 # === Entity Components ===
@@ -236,7 +298,7 @@ class EntityComponents(AtlasModel):
         known_fields = {f.name for f in fields(self)}
         for key, value in kwargs.items():
             if key in known_fields:
-                setattr(self, key, value)
+                setattr(self, key, _coerce_field_value(type(self), key, value))
             elif key.startswith("custom_"):
                 setattr(self, key, value)
             else:
@@ -261,21 +323,27 @@ class CommandComponent(AtlasModel):
 
 @dataclass
 class TaskParametersComponent(AtlasModel):
-    """Command parameters for task execution."""
+    """Command parameters for task execution.
+
+    Accepts arbitrary keyword arguments beyond the known fields, since
+    task parameters are command-specific and dynamic.
+    """
+
+    _allow_extra: ClassVar[bool] = True
 
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     altitude_m: Optional[float] = None
 
     def __init__(self, **kwargs):
-        known_fields = {"latitude", "longitude", "altitude_m"}
+        known_fields = {f.name for f in fields(self)}
         for key, value in kwargs.items():
-            if key in known_fields or key.startswith("custom_"):
-                setattr(self, key, value)
+            if key in known_fields:
+                setattr(self, key, _coerce_field_value(type(self), key, value))
             else:
-                raise ValueError(
-                    f"Unknown task parameter '{key}'. Custom parameters must be prefixed with 'custom_'"
-                )
+                # Task parameters are command-specific and dynamic;
+                # accept arbitrary keys as extra attributes.
+                setattr(self, key, value)
 
 
 @dataclass
@@ -303,9 +371,11 @@ class TaskComponents(AtlasModel):
     progress: Optional[TaskProgressComponent] = None
 
     def __init__(self, **kwargs):
-        known_fields = {"command", "parameters", "progress"}
+        known_fields = {f.name for f in fields(self)}
         for key, value in kwargs.items():
-            if key in known_fields or key.startswith("custom_"):
+            if key in known_fields:
+                setattr(self, key, _coerce_field_value(type(self), key, value))
+            elif key.startswith("custom_"):
                 setattr(self, key, value)
             else:
                 raise ValueError(
@@ -336,16 +406,11 @@ class ObjectMetadata(AtlasModel):
     expiry_time: Optional[str] = None
 
     def __init__(self, **kwargs):
-        known_fields = {
-            "bucket",
-            "size_bytes",
-            "usage_hints",
-            "referenced_by",
-            "checksum",
-            "expiry_time",
-        }
+        known_fields = {f.name for f in fields(self)}
         for key, value in kwargs.items():
-            if key in known_fields or key.startswith("custom_"):
+            if key in known_fields:
+                setattr(self, key, _coerce_field_value(type(self), key, value))
+            elif key.startswith("custom_"):
                 setattr(self, key, value)
             else:
                 raise ValueError(
