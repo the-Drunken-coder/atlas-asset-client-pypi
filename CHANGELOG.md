@@ -1,5 +1,13 @@
 ﻿# Changelog
 
+## [0.3.18] - 2026-03-07
+
+- Added `view_object` method to retrieve object content as text with associated metadata.
+- `update_entity` now requires at least one of `components` or `subtype` to be provided.
+- `create_object` now validates that `content_type` is provided and non-empty.
+- `update_object` now requires at least one update field to be specified.
+- Improved handling of missing or invalid `Content-Length` headers in `download_object` and `view_object`, returning `None` instead of raising errors.
+
 ## [0.3.17] - 2026-03-04
 
 - Added automatic dict-to-dataclass coercion for nested component fields, allowing plain dictionaries to be passed to constructors (e.g., `EntityComponents(health={"battery_percent": 76})`) instead of requiring pre-instantiated objects.
