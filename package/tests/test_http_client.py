@@ -59,6 +59,16 @@ async def test_create_entity_posts_payload():
 
 
 @pytest.mark.asyncio
+async def test_update_entity_requires_components_or_subtype():
+    client: Any = AtlasCommandHttpClient("http://atlas.local")
+    async with client:
+        with pytest.raises(
+            ValueError, match="update_entity requires at least one of: components, subtype"
+        ):
+            await client.update_entity("asset-1")
+
+
+@pytest.mark.asyncio
 async def test_create_object_uploads_file_and_references():
     upload_requests: list[httpx.Request] = []
     reference_requests: list[httpx.Request] = []
@@ -130,6 +140,19 @@ async def test_create_object_with_references_requires_object_id_in_response():
 
     assert len(upload_requests) == 1
     assert reference_requests == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("content_type", ["", None])
+async def test_create_object_requires_content_type(content_type: str | None):
+    client: Any = AtlasCommandHttpClient("http://atlas.local")
+    async with client:
+        with pytest.raises(ValueError, match="create_object requires 'content_type'"):
+            await client.create_object(  # type: ignore[arg-type]
+                file=b"binary-data",
+                object_id="obj-123",
+                content_type=content_type,
+            )
 
 
 @pytest.mark.asyncio
@@ -292,3 +315,97 @@ async def test_download_object_returns_bytes_and_metadata():
     assert data == b"payload"
     assert content_type == "video/mp4"
     assert content_length == 7
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("headers", "expected_length"),
+    [
+        ({"content-type": "video/mp4", "content-length": "abc"}, None),
+        ({"content-type": "video/mp4"}, None),
+    ],
+)
+async def test_download_object_handles_invalid_or_missing_content_length(
+    headers: dict[str, str], expected_length: int | None
+):
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/objects/obj-123/download":
+            response_kwargs: dict[str, Any] = {"headers": headers}
+            if "content-length" in headers:
+                response_kwargs["content"] = b"payload"
+            else:
+                response_kwargs["stream"] = httpx.ByteStream(b"payload")
+            return httpx.Response(200, **response_kwargs)
+        return httpx.Response(404)
+
+    client: Any = AtlasCommandHttpClient(
+        "http://atlas.local", transport=httpx.MockTransport(handler)
+    )
+    async with client:
+        data, content_type, content_length = await client.download_object("obj-123")
+
+    assert data == b"payload"
+    assert content_type == "video/mp4"
+    assert content_length == expected_length
+
+
+@pytest.mark.asyncio
+async def test_view_object_returns_text_and_metadata():
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/objects/obj-123/view":
+            return httpx.Response(
+                200,
+                text='{"message":"hello"}',
+                headers={"content-type": "application/json", "content-length": "19"},
+            )
+        return httpx.Response(404)
+
+    client: Any = AtlasCommandHttpClient(
+        "http://atlas.local", transport=httpx.MockTransport(handler)
+    )
+    async with client:
+        data, content_type, content_length = await client.view_object("obj-123")
+
+    assert data == '{"message":"hello"}'
+    assert content_type == "application/json"
+    assert content_length == 19
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("headers", "expected_length"),
+    [
+        ({"content-type": "text/plain", "content-length": "size-unknown"}, None),
+        ({"content-type": "text/plain"}, None),
+    ],
+)
+async def test_view_object_handles_invalid_or_missing_content_length(
+    headers: dict[str, str], expected_length: int | None
+):
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/objects/obj-123/view":
+            response_kwargs: dict[str, Any] = {"headers": headers}
+            if "content-length" in headers:
+                response_kwargs["text"] = "hello world"
+            else:
+                response_kwargs["stream"] = httpx.ByteStream(b"hello world")
+            return httpx.Response(200, **response_kwargs)
+        return httpx.Response(404)
+
+    client: Any = AtlasCommandHttpClient(
+        "http://atlas.local", transport=httpx.MockTransport(handler)
+    )
+    async with client:
+        data, content_type, content_length = await client.view_object("obj-123")
+
+    assert data == "hello world"
+    assert content_type == "text/plain"
+    assert content_length == expected_length
+
+
+@pytest.mark.asyncio
+async def test_update_object_requires_update_fields():
+    client: Any = AtlasCommandHttpClient("http://atlas.local")
+    async with client:
+        with pytest.raises(ValueError, match="update_object requires at least one field to update"):
+            await client.update_object("obj-123")
