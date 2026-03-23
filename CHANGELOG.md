@@ -1,5 +1,14 @@
 ﻿# Changelog
 
+## [0.3.19] - 2026-03-23
+
+- Add `typing_extensions>=4.12.0` dependency to support `NotRequired` typed dict fields.
+- Unify tombstone types in `get_changed_since` under new `DeletedResource` class; retain `DeletedEntity`, `DeletedTask`, and `DeletedObject` as backward-compatible aliases.
+- Extend `get_changed_since` response to include pagination cursors (`next_*_cursor`) and `has_more_*` flags for all resource types.
+- Implement optimistic concurrency control for object metadata: the client now caches ETags from `get_object` calls and automatically supplies `If-Match` headers on `update_object`, `add_object_reference`, and `remove_object_reference`; `update_object` accepts an optional `if_match` argument to override the cached value.
+- Change reference management helpers (`add_object_reference`, `remove_object_reference`) to use GET-then-PATCH with `If-Match` instead of dedicated reference endpoints; document that `remove_object_reference` removes exact matches (entity-only, task-only, or paired).
+- Deprecate the `status` parameter on `get_tasks_by_entity`; the underlying API no longer filters by status on this route.
+
 ## [0.3.18] - 2026-03-07
 
 - Added `view_object` method to retrieve object content as text with associated metadata.

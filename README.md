@@ -488,7 +488,7 @@ async with AtlasCommandHttpClient("http://localhost:8000") as client:
 - `update_task(task_id, *, status=None, entity_id=None, components=None, extra=None)` – requires `task_id`; 
   all other parameters are optional and only update when provided.
 - `delete_task(task_id)` – requires `task_id`.
-- `get_tasks_by_entity(entity_id, *, status=None, limit=25, offset=0)` – requires `entity_id`; filters optional.
+- `get_tasks_by_entity(entity_id, *, status=None, limit=25, offset=0)` – requires `entity_id`. `status` is deprecated and ignored (the API does not filter by status on this route).
 - `start_task(task_id)` – requires `task_id`.
 - `complete_task(task_id, *, result=None)` – requires `task_id`; optional `result` payload.
 - `transition_task_status(task_id, status, *, validate=True, extra=None)` – requires `task_id` and `status`; optional validation toggle and `extra` metadata.
@@ -503,7 +503,8 @@ async with AtlasCommandHttpClient("http://localhost:8000") as client:
 - `download_object(object_id)` – returns `(bytes_content, content_type, content_length)`.
 - `create_object_metadata(*, object_id, path=None, bucket=None, size_bytes=None, content_type=None, object_type=None, usage_hints=None, referenced_by=None, extra=None)`
   – creates object metadata entries via `/objects`.
-- `update_object(object_id, *, usage_hints=None, referenced_by=None)` – requires `object_id`; metadata optional.
+- `update_object(object_id, *, usage_hints=None, referenced_by=None, if_match=None)` – requires `object_id`; metadata optional.
+  Pass `if_match` to send an explicit `If-Match` (otherwise the client uses the ETag from the last `get_object` for that id).
 - `update_object()` requires at least one field (`usage_hints` or `referenced_by`).
 - `delete_object(object_id)` – requires `object_id`.
 - `view_object(object_id)` – returns `(text_content, content_type, content_length)`.
@@ -511,6 +512,8 @@ async with AtlasCommandHttpClient("http://localhost:8000") as client:
 - `get_objects_by_task(task_id, *, limit=50, offset=0)` – requires `task_id`, optional pagination.
 - `add_object_reference(object_id, *, entity_id=None, task_id=None)` / `remove_object_reference(...)`
   – require `object_id`; provide either `entity_id` or `task_id` to target the reference.
+  Both helpers use GET + PATCH on `referenced_by`; concurrent clients can clobber each other until the API supports atomic updates.
+  `remove_object_reference` removes an exact match: both IDs remove only that pair; entity-only removes only refs with that entity and no task; task-only removes only refs with that task and no entity.
 - `find_orphaned_objects(*, limit=100, offset=0)` – optional pagination.
 - `get_object_references(object_id)` / `validate_object_references(object_id)` / `cleanup_object_references(object_id)` –
   each requires `object_id`.
@@ -520,8 +523,8 @@ async with AtlasCommandHttpClient("http://localhost:8000") as client:
 
 ### Queries
 
-- `get_changed_since(since, *, limit_per_type=None)` – requires `since`; optional per-type limit. Response includes `deleted_entities`, `deleted_tasks`, and `deleted_objects` (in-memory, ~1h TTL).
-- `get_full_dataset(*, entity_limit=None, task_limit=None, object_limit=None)` – filters are optional.
+- `get_changed_since(since, *, limit_per_type=None, entity_cursor=None, task_cursor=None, object_cursor=None, deleted_entity_cursor=None, deleted_task_cursor=None, deleted_object_cursor=None)` – requires `since`; optional per-type limit. When a prior response set `has_more_*`, pass the matching `next_*_cursor` value back as the corresponding `*_cursor` keyword (keep the same `since`). Response includes `deleted_entities`, `deleted_tasks`, and `deleted_objects` (in-memory, ~1h TTL). Each tombstone is `{ "id", "type", "deleted_at" }` (`type` is `entity` | `task` | `object`).
+- `get_full_dataset(*, entity_limit=None, task_limit=None, object_limit=None, entity_cursor=None, task_cursor=None, object_cursor=None)` – limits and continuation cursors are optional.
 
 ## Configuration
 
