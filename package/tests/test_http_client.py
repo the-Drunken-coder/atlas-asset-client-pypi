@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import warnings
 from datetime import datetime, timezone
 from typing import Any
 
@@ -76,10 +77,18 @@ async def test_create_object_uploads_file_and_references():
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/objects/upload":
             upload_requests.append(request)
-            return httpx.Response(201, json={"object_id": "obj-123"})
-        if request.url.path == "/objects/obj-123/references":
+            return httpx.Response(201, json={"object_id": "obj-123"}, headers={"etag": '"obj-v1"'})
+        if request.url.path == "/objects/obj-123" and request.method == "PATCH":
             reference_requests.append(request)
-            return httpx.Response(200, json={})
+            return httpx.Response(
+                200,
+                json={
+                    "object_id": "obj-123",
+                    "referenced_by": [
+                        {"entity_id": "asset-1", "task_id": "task-alpha"},
+                    ],
+                },
+            )
         return httpx.Response(404)
 
     client: Any = AtlasCommandHttpClient(
@@ -96,6 +105,9 @@ async def test_create_object_uploads_file_and_references():
         )
 
     assert stored["object_id"] == "obj-123"
+    assert stored.get("referenced_by") == [
+        {"entity_id": "asset-1", "task_id": "task-alpha"},
+    ]
     assert len(upload_requests) == 1
     upload_request = upload_requests[0]
     assert upload_request.method == "POST"
@@ -108,9 +120,9 @@ async def test_create_object_uploads_file_and_references():
     assert b"mission_video" in upload_request.content
     assert len(reference_requests) == 1
     ref_request = reference_requests[0]
+    assert ref_request.headers.get("if-match") == '"obj-v1"'
     payload = json.loads(ref_request.content)
-    assert payload["entity_id"] == "asset-1"
-    assert payload["task_id"] == "task-alpha"
+    assert payload["referenced_by"] == [{"entity_id": "asset-1", "task_id": "task-alpha"}]
 
 
 @pytest.mark.asyncio
@@ -143,6 +155,26 @@ async def test_create_object_with_references_requires_object_id_in_response():
 
 
 @pytest.mark.asyncio
+async def test_create_object_with_references_requires_upload_etag():
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/objects/upload":
+            return httpx.Response(201, json={"object_id": "obj-123"})
+        return httpx.Response(404)
+
+    client: Any = AtlasCommandHttpClient(
+        "http://atlas.local", transport=httpx.MockTransport(handler)
+    )
+    async with client:
+        with pytest.raises(RuntimeError, match="did not include an ETag"):
+            await client.create_object(
+                file=b"binary-data",
+                object_id="obj-123",
+                content_type="application/octet-stream",
+                referenced_by=[{"entity_id": "asset-1"}],
+            )
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("content_type", ["", None])
 async def test_create_object_requires_content_type(content_type: str | None):
     client: Any = AtlasCommandHttpClient("http://atlas.local")
@@ -168,9 +200,9 @@ async def test_get_changed_since_passes_params():
                 "entities": [],
                 "tasks": [],
                 "objects": [],
-                "deleted_entities": [{"entity_id": "entity-1", "deleted_at": since}],
-                "deleted_tasks": [{"task_id": "task-1", "deleted_at": since}],
-                "deleted_objects": [{"object_id": "obj-1", "deleted_at": since}],
+                "deleted_entities": [{"id": "entity-1", "type": "entity", "deleted_at": since}],
+                "deleted_tasks": [{"id": "task-1", "type": "task", "deleted_at": since}],
+                "deleted_objects": [{"id": "obj-1", "type": "object", "deleted_at": since}],
             },
         )
 
@@ -184,9 +216,20 @@ async def test_get_changed_since_passes_params():
         "entities": [],
         "tasks": [],
         "objects": [],
-        "deleted_entities": [{"entity_id": "entity-1", "deleted_at": since}],
-        "deleted_tasks": [{"task_id": "task-1", "deleted_at": since}],
-        "deleted_objects": [{"object_id": "obj-1", "deleted_at": since}],
+        "deleted_entities": [
+            {
+                "id": "entity-1",
+                "type": "entity",
+                "deleted_at": since,
+                "entity_id": "entity-1",
+            },
+        ],
+        "deleted_tasks": [
+            {"id": "task-1", "type": "task", "deleted_at": since, "task_id": "task-1"},
+        ],
+        "deleted_objects": [
+            {"id": "obj-1", "type": "object", "deleted_at": since, "object_id": "obj-1"},
+        ],
     }
 
 
@@ -266,14 +309,12 @@ async def test_transition_task_status_posts_body():
         "http://atlas.local", transport=httpx.MockTransport(handler)
     )
     async with client:
-        await client.transition_task_status(
-            "task-1", "in_progress", validate=False, extra={"note": "go"}
-        )
+        await client.transition_task_status("task-1", "in_progress", progress=10.0, message="note")
 
     req = captured["request"]
     assert req.url.path == "/tasks/task-1/status"
     payload = json.loads(req.content)
-    assert payload == {"status": "in_progress", "validate": False, "extra": {"note": "go"}}
+    assert payload == {"status": "in_progress", "progress": 10.0, "message": "note"}
 
 
 @pytest.mark.asyncio
@@ -409,3 +450,147 @@ async def test_update_object_requires_update_fields():
     async with client:
         with pytest.raises(ValueError, match="update_object requires at least one field to update"):
             await client.update_object("obj-123")
+
+
+@pytest.mark.asyncio
+async def test_update_object_sends_if_match_when_provided():
+    captured: list[httpx.Request] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(request)
+        return httpx.Response(200, json={"object_id": "obj-123"})
+
+    client: Any = AtlasCommandHttpClient(
+        "http://atlas.local", transport=httpx.MockTransport(handler)
+    )
+    async with client:
+        await client.update_object(
+            "obj-123",
+            usage_hints=["hint"],
+            if_match='"etag-explicit"',
+        )
+
+    assert len(captured) == 1
+    assert captured[0].method == "PATCH"
+    assert captured[0].url.path == "/objects/obj-123"
+    assert captured[0].headers.get("if-match") == '"etag-explicit"'
+
+
+@pytest.mark.asyncio
+async def test_add_object_reference_retries_once_on_412():
+    patch_count = 0
+    get_count = 0
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal patch_count, get_count
+        if request.url.path == "/objects/obj-123" and request.method == "GET":
+            get_count += 1
+            etag = '"etag-a"' if get_count == 1 else '"etag-b"'
+            return httpx.Response(
+                200,
+                json={"object_id": "obj-123", "referenced_by": []},
+                headers={"etag": etag},
+            )
+        if request.url.path == "/objects/obj-123" and request.method == "PATCH":
+            patch_count += 1
+            if patch_count == 1:
+                return httpx.Response(412, text="precondition failed")
+            return httpx.Response(
+                200,
+                json={"object_id": "obj-123", "referenced_by": [{"entity_id": "asset-1"}]},
+                headers={"etag": '"etag-c"'},
+            )
+        return httpx.Response(404)
+
+    client: Any = AtlasCommandHttpClient(
+        "http://atlas.local", transport=httpx.MockTransport(handler)
+    )
+    async with client:
+        result = await client.add_object_reference("obj-123", entity_id="asset-1")
+
+    assert result["referenced_by"] == [{"entity_id": "asset-1"}]
+    assert patch_count == 2
+    assert get_count == 2
+
+
+@pytest.mark.asyncio
+async def test_remove_object_reference_retries_once_on_412():
+    patch_count = 0
+    get_count = 0
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal patch_count, get_count
+        if request.url.path == "/objects/obj-123" and request.method == "GET":
+            get_count += 1
+            etag = '"etag-a"' if get_count == 1 else '"etag-b"'
+            return httpx.Response(
+                200,
+                json={"object_id": "obj-123", "referenced_by": [{"entity_id": "asset-1"}]},
+                headers={"etag": etag},
+            )
+        if request.url.path == "/objects/obj-123" and request.method == "PATCH":
+            patch_count += 1
+            if patch_count == 1:
+                return httpx.Response(412, text="precondition failed")
+            return httpx.Response(
+                200,
+                json={"object_id": "obj-123", "referenced_by": []},
+                headers={"etag": '"etag-c"'},
+            )
+        return httpx.Response(404)
+
+    client: Any = AtlasCommandHttpClient(
+        "http://atlas.local", transport=httpx.MockTransport(handler)
+    )
+    async with client:
+        result = await client.remove_object_reference("obj-123", entity_id="asset-1")
+
+    assert result["referenced_by"] == []
+    assert patch_count == 2
+    assert get_count == 2
+
+
+@pytest.mark.asyncio
+async def test_list_tasks_deprecated_status_kwarg_warns():
+    captured: list[httpx.Request] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(request)
+        return httpx.Response(200, json=[])
+
+    client: Any = AtlasCommandHttpClient(
+        "http://atlas.local", transport=httpx.MockTransport(handler)
+    )
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        async with client:
+            await client.list_tasks(status="pending")
+    assert any(x.category is DeprecationWarning for x in w)
+    assert len(captured) == 1
+    assert "status" not in captured[0].url.params
+
+
+@pytest.mark.asyncio
+async def test_list_objects_deprecated_kwargs_warn():
+    captured: list[httpx.Request] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(request)
+        return httpx.Response(200, json=[])
+
+    client: Any = AtlasCommandHttpClient(
+        "http://atlas.local", transport=httpx.MockTransport(handler)
+    )
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        async with client:
+            await client.list_objects(
+                content_type="image/png",
+                type="data",
+                validate=True,
+            )
+    assert len([x for x in w if x.category is DeprecationWarning]) == 3
+    assert len(captured) == 1
+    assert "content_type" not in captured[0].url.params
+    assert "type" not in captured[0].url.params
+    assert "validate" not in captured[0].url.params

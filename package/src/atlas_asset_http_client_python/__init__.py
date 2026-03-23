@@ -25,14 +25,18 @@ from .components import (
 from .http_client import (
     AtlasCommandHttpClient,
     ChangedSinceResponse,
-    DeletedEntity,
-    DeletedObject,
-    DeletedTask,
+    DeletedResource,
 )
+
+# Back-compat aliases (single tombstone type on the wire).
+DeletedEntity = DeletedResource
+DeletedTask = DeletedResource
+DeletedObject = DeletedResource
 
 __all__ = [
     "AtlasCommandHttpClient",
     "ChangedSinceResponse",
+    "DeletedResource",
     "DeletedEntity",
     "DeletedTask",
     "DeletedObject",

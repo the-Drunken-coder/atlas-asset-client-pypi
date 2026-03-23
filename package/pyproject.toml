@@ -7,7 +7,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "atlas-asset-client"
-version = "0.3.18"
+version = "0.3.19"
 description = "Async HTTP client for Atlas Command."
 readme = "README.md"
 requires-python = ">=3.9,<3.14"
@@ -34,6 +34,7 @@ classifiers = [
 ]
 dependencies = [
     "httpx>=0.27",
+    "typing_extensions>=4.12.0",
 ]
 
 [project.optional-dependencies]
